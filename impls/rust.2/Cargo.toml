@@ -1,0 +1,16 @@
+[package]
+name = "marl"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.99"
+rustyline = "17.0.1"
+
+[[bin]]
+name = "step0_repl"
+path = "src/step0_repl.rs"
+
+[[bin]]
+name = "step1_read_print"
+path = "src/step1_read_print.rs"
