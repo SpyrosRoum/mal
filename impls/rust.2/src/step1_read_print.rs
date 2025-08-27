@@ -1,8 +1,14 @@
+mod printer;
+mod reader;
+mod types;
+
 use std::process::exit;
 
-use rustyline::{DefaultEditor, Result, error::ReadlineError};
+use rustyline::{DefaultEditor, error::ReadlineError};
 
-fn main() -> Result<()> {
+use crate::types::MalType;
+
+fn main() -> anyhow::Result<()> {
     let mut line_editor = DefaultEditor::new()?;
 
     let code = loop {
@@ -10,7 +16,7 @@ fn main() -> Result<()> {
 
         match sig {
             Ok(buffer) => {
-                let res = mal_rep(&buffer);
+                let res = mal_rep(&buffer)?;
                 println!("{res}");
             }
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
@@ -27,18 +33,24 @@ fn main() -> Result<()> {
     exit(code);
 }
 
-fn mal_read(input: &str) -> &str {
-    input
+fn mal_read(input: &str) -> anyhow::Result<MalType> {
+    reader::read_str(input)
 }
-fn mal_eval(input: &str) -> &str {
-    input
-}
-fn mal_print(input: &str) -> &str {
+
+fn mal_eval(input: MalType) -> MalType {
     input
 }
 
-fn mal_rep(input: &str) -> &str {
+fn mal_print(input: MalType) -> String {
+    printer::pr_str(input)
+}
+
+fn mal_rep(input: &str) -> anyhow::Result<String> {
     let res = mal_read(input);
-    let res = mal_eval(res);
-    mal_print(res)
+    if let Err(err) = res {
+        println!("{err}");
+        return Ok(String::new());
+    }
+    let res = mal_eval(res.unwrap());
+    Ok(mal_print(res))
 }

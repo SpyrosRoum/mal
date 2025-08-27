@@ -2,14 +2,20 @@ use std::iter::Peekable;
 
 use anyhow::bail;
 
+use crate::types::MalType;
+
+const ESCAPE_CHARS: [char; 2] = ['"', '\\'];
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     OpenParen,
     CloseParen,
     Symbol(String),
+    String(String),
     Number(f64),
     Bool(bool),
-    EoF,
+    Nil,
+    EOF,
 }
 
 fn tokenize(src: &str) -> anyhow::Result<Vec<Token>> {
@@ -36,13 +42,20 @@ fn tokenize(src: &str) -> anyhow::Result<Vec<Token>> {
             },
             // Comma is whitespace
             ',' => continue,
+            // Skip until EoL, skipping comment
+            ';' => tokenizer_skip_line(&mut chars),
             c if c.is_whitespace() => continue,
+            '"' => {
+                let string = tokenize_string(&mut chars)?;
+                tokens.push(Token::String(string))
+            }
             _ => {
                 let sym = tokenize_symbol(c, &mut chars);
 
                 match sym.as_str() {
                     "true" => tokens.push(Token::Bool(true)),
                     "false" => tokens.push(Token::Bool(false)),
+                    "nil" => tokens.push(Token::Nil),
                     _ => tokens.push(Token::Symbol(sym)),
                 }
             }
@@ -50,6 +63,41 @@ fn tokenize(src: &str) -> anyhow::Result<Vec<Token>> {
     }
 
     Ok(tokens)
+}
+
+fn tokenizer_skip_line(chars: &mut Peekable<impl Iterator<Item = char>>) {
+    while let Some(c) = chars.next() {
+        if c == '\n' {
+            return;
+        }
+    }
+}
+
+fn tokenize_string(chars: &mut Peekable<impl Iterator<Item = char>>) -> anyhow::Result<String> {
+    let mut buffer = String::new();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.peek() {
+                Some(c) if ESCAPE_CHARS.contains(c) => {
+                    buffer.push('\\');
+                    buffer.push(*c);
+                    // Consume the char we were peeking
+                    chars.next();
+                    continue;
+                }
+                Some(c) => bail!("Invalid escape character: {c}"),
+                None => bail!("Unclosed string literal"),
+            }
+        }
+        if c == '"' {
+            break;
+        }
+
+        buffer.push(c);
+    }
+
+    Ok(buffer)
 }
 
 fn tokenize_number(
@@ -102,29 +150,80 @@ impl Reader {
             self.pos += 1;
             token
         } else {
-            Token::EoF
+            Token::EOF
         }
     }
 
     pub fn peek(&self) -> Token {
-        self.tokens.get(self.pos).cloned().unwrap_or(Token::EoF)
+        self.tokens.get(self.pos).cloned().unwrap_or(Token::EOF)
     }
 }
 
-pub fn read_str(input: &str) -> anyhow::Result<()> {
+pub fn read_str(input: &str) -> anyhow::Result<MalType> {
     let tokens = tokenize(input)?;
 
     let mut reader = Reader::new(tokens);
-    read_form(&mut reader);
-
-    Ok(())
+    read_form(&mut reader)
 }
 
-fn read_form(reader: &mut Reader) {
+fn read_atom(reader: &mut Reader) -> anyhow::Result<MalType> {
+    let token = reader.peek();
+    let atom = match token {
+        Token::Symbol(s) => MalType::Symbol(s),
+        Token::Number(n) => MalType::Number(n),
+        Token::Bool(b) => MalType::Bool(b),
+        Token::OpenParen | Token::CloseParen | Token::EOF => bail!("Expected atom, got {token:?}"),
+        Token::String(s) => MalType::String(s),
+        Token::Nil => MalType::Nil,
+    };
+
+    // We didn't error so we can consume the token
+    reader.next();
+    Ok(atom)
+}
+
+fn read_list(reader: &mut Reader) -> anyhow::Result<MalType> {
+    let mut list = vec![];
+
     loop {
         let token = reader.peek();
-        if token == Token::EoF {
-            break;
+        match token {
+            Token::OpenParen => {
+                // Consume open paren
+                reader.next();
+                let inner = read_list(reader)?;
+                list.push(inner);
+            }
+            Token::CloseParen => {
+                // Consume close paren
+                reader.next();
+                return Ok(MalType::List(list));
+            }
+            _ => {
+                let atom = read_atom(reader)?;
+                list.push(atom);
+            }
         }
     }
+}
+
+fn read_form(reader: &mut Reader) -> anyhow::Result<MalType> {
+    let token = reader.peek();
+
+    let form = match token {
+        // There are no tokens at all.
+        // TODO: In the future a different error can be used, but with
+        // anyhow that's not easy and nil is fine for now
+        Token::EOF => MalType::Nil,
+        Token::OpenParen => {
+            reader.next();
+            read_list(reader)?
+        }
+        // The read_list should consume all *balanced* close
+        // parens, which means we have some extra if we find this
+        Token::CloseParen => bail!("Unbalanced close paren"),
+        _ => read_atom(reader)?,
+    };
+
+    Ok(form)
 }
