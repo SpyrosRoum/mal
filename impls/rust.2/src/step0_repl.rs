@@ -1,6 +1,6 @@
 use std::process::exit;
 
-use rustyline::{error::ReadlineError, DefaultEditor, Result};
+use rustyline::{DefaultEditor, Result, error::ReadlineError};
 
 fn main() -> Result<()> {
     let mut line_editor = DefaultEditor::new()?;

@@ -66,7 +66,7 @@ fn tokenize(src: &str) -> anyhow::Result<Vec<Token>> {
 }
 
 fn tokenizer_skip_line(chars: &mut Peekable<impl Iterator<Item = char>>) {
-    while let Some(c) = chars.next() {
+    for c in chars {
         if c == '\n' {
             return;
         }

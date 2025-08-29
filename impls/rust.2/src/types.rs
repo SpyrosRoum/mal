@@ -15,10 +15,7 @@ pub enum MalType {
 
 impl MalType {
     pub fn is_num(&self) -> bool {
-        match self {
-            MalType::Number(_) => true,
-            _ => false,
-        }
+        matches!(self, MalType::Number(_))
     }
 }
 
