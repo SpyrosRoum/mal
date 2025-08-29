@@ -1,4 +1,6 @@
-use std::fmt::Display;
+use std::{borrow::Cow, fmt::Display};
+
+pub type MalFunction = fn(&[Cow<'_, MalType>]) -> anyhow::Result<MalType>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum MalType {
@@ -7,7 +9,17 @@ pub enum MalType {
     Number(f64),
     Symbol(String),
     Bool(bool),
+    Function(MalFunction),
     Nil,
+}
+
+impl MalType {
+    pub fn is_num(&self) -> bool {
+        match self {
+            MalType::Number(_) => true,
+            _ => false,
+        }
+    }
 }
 
 impl Display for MalType {
@@ -21,7 +33,7 @@ impl Display for MalType {
 
                 // It's possible it's just an empty list, so we check
                 if let Some(form) = mal_types.last() {
-                    write!(f, "{}", form)?;
+                    write!(f, "{form}")?;
                 }
 
                 f.write_str(")")
@@ -30,6 +42,7 @@ impl Display for MalType {
             MalType::Number(n) => n.fmt(f),
             MalType::Symbol(s) => s.fmt(f),
             MalType::Bool(b) => b.fmt(f),
+            MalType::Function(_) => write!(f, "Function"),
             MalType::Nil => write!(f, "nil"),
         }
     }

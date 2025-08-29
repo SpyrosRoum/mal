@@ -42,7 +42,7 @@ fn mal_eval(input: MalType) -> MalType {
 }
 
 fn mal_print(input: MalType) -> String {
-    printer::pr_str(input)
+    printer::pr_str(&input)
 }
 
 fn mal_rep(input: &str) -> anyhow::Result<String> {
