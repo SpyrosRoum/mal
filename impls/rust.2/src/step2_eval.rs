@@ -1,12 +1,10 @@
-mod printer;
-mod reader;
-mod types;
-
 use std::{borrow::Cow, collections::HashMap, ops::Deref, process::exit};
 
 use rustyline::{DefaultEditor, error::ReadlineError};
 
-use crate::types::{MalFunction, MalType};
+use marl::printer;
+use marl::reader;
+use marl::types::{MalFunction, MalType};
 
 fn main() -> anyhow::Result<()> {
     let mut line_editor = DefaultEditor::new()?;
