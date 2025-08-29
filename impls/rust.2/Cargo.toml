@@ -20,3 +20,7 @@ path = "src/step1_read_print.rs"
 [[bin]]
 name = "step2_eval"
 path = "src/step2_eval.rs"
+
+[[bin]]
+name = "step3_env"
+path = "src/step3_env.rs"
