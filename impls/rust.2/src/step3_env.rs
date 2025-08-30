@@ -42,6 +42,23 @@ fn mal_read(input: &str) -> anyhow::Result<MalType> {
     reader::read_str(input)
 }
 
+/// Assert that the key is a symbol, evaluate the form, and return the
+/// key identifier after setting the key, val in the env.
+fn set_in_env<'a>(
+    env: &mut Env,
+    key: &'a MalType,
+    form_to_be_evaled: &MalType,
+) -> anyhow::Result<&'a str> {
+    let MalType::Symbol(ident) = key else {
+        anyhow::bail!("Expected identifier");
+    };
+
+    let val = mal_eval(form_to_be_evaled, env)?.into_owned();
+
+    env.set(ident.clone(), val);
+    Ok(ident)
+}
+
 fn mal_eval<'a, 'e>(ast: &'a MalType, env: &'e mut Env) -> anyhow::Result<Cow<'a, MalType>>
 where
     'e: 'a,
@@ -61,18 +78,15 @@ where
                         anyhow::bail!("Expected two arguments for `def!`");
                     }
 
-                    let MalType::Symbol(ident) = mal_types.get(1).expect("We checked length")
-                    else {
-                        anyhow::bail!("Expected identifier");
-                    };
-
+                    let key = mal_types.get(1).expect("We checked length");
                     let form = mal_types.last().expect("We checked length");
-                    let val = mal_eval(form, env)?.into_owned();
+                    let ident = set_in_env(env, key, form)?;
 
-                    env.set(ident.clone(), val);
-                    Ok(Cow::Borrowed(
-                        env.get(ident).expect("We just set it in the env"),
-                    ))
+                    // NOTE: We could just return the form here as
+                    // Cow::Borrowed but this acts as an assert that
+                    // we did actually set it without issues.
+                    let val = env.get(ident).expect("We just set it in the env");
+                    Ok(Cow::Borrowed(val))
                 }
                 MalType::Symbol(s) if s == "let*" => {
                     let mut new_env = Env::with_outer(env);
@@ -90,14 +104,8 @@ where
                         anyhow::bail!("Even number of arguments expected for bindings");
                     }
 
-                    for (key_form, val_form) in bindings.iter().tuples() {
-                        let MalType::Symbol(key) = key_form else {
-                            anyhow::bail!("Expected identifier, got `{key_form}`");
-                        };
-
-                        let val = mal_eval(val_form, &mut new_env)?.into_owned();
-
-                        new_env.set(key.clone(), val);
+                    for (key, val) in bindings.iter().tuples() {
+                        set_in_env(&mut new_env, key, val)?;
                     }
 
                     let form = mal_types.last().expect("We checked length");
