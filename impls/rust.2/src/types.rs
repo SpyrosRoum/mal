@@ -2,7 +2,7 @@ use std::{borrow::Cow, fmt::Display};
 
 pub type MalFunction = fn(&[Cow<'_, MalType>]) -> anyhow::Result<MalType>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum MalType {
     String(String),
     List(Vec<MalType>),

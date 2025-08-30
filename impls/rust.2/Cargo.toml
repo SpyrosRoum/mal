@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.99"
+itertools = "0.14.0"
 rustyline = "17.0.1"
 
 [lib]
