@@ -2,7 +2,7 @@ use std::iter::Peekable;
 
 use anyhow::bail;
 
-use crate::types::MalType;
+use crate::types::{MalMap, MalType};
 
 const ESCAPE_CHARS: [char; 2] = ['"', '\\'];
 
@@ -12,6 +12,8 @@ pub enum Token {
     CloseParen,
     OpenBracket,
     CloseBracket,
+    OpenCurly,
+    CloseCurly,
     Symbol(String),
     String(String),
     Number(f64),
@@ -30,6 +32,8 @@ fn tokenize(src: &str) -> anyhow::Result<Vec<Token>> {
             ')' => tokens.push(Token::CloseParen),
             '[' => tokens.push(Token::OpenBracket),
             ']' => tokens.push(Token::CloseBracket),
+            '{' => tokens.push(Token::OpenCurly),
+            '}' => tokens.push(Token::CloseCurly),
             '0'..='9' => {
                 let num = tokenize_number(c, &mut chars)?;
                 tokens.push(Token::Number(num))
@@ -95,13 +99,13 @@ fn tokenize_string(chars: &mut Peekable<impl Iterator<Item = char>>) -> anyhow::
             }
         }
         if c == '"' {
-            break;
+            return Ok(buffer);
         }
 
         buffer.push(c);
     }
 
-    Ok(buffer)
+    Err(anyhow::anyhow!("unbalanced \""))
 }
 
 fn tokenize_number(
@@ -182,7 +186,9 @@ fn read_atom(reader: &mut Reader) -> anyhow::Result<MalType> {
         | Token::CloseParen
         | Token::EOF
         | Token::OpenBracket
-        | Token::CloseBracket => bail!("Expected atom, got {token:?}"),
+        | Token::CloseBracket
+        | Token::OpenCurly
+        | Token::CloseCurly => bail!("Expected atom, got {token:?}"),
     };
 
     // We didn't error so we can consume the token
@@ -191,7 +197,7 @@ fn read_atom(reader: &mut Reader) -> anyhow::Result<MalType> {
 }
 
 fn read_list_like(reader: &mut Reader, closing_token: Token) -> anyhow::Result<MalType> {
-    let mut list = vec![];
+    let mut items = vec![];
 
     loop {
         let token = reader.peek();
@@ -200,27 +206,37 @@ fn read_list_like(reader: &mut Reader, closing_token: Token) -> anyhow::Result<M
                 // Consume open paren
                 reader.next();
                 let inner = read_list_like(reader, Token::CloseParen)?;
-                list.push(inner);
+                items.push(inner);
             }
             Token::OpenBracket => {
                 // Consume open bracket
                 reader.next();
                 let inner = read_list_like(reader, Token::CloseBracket)?;
-                list.push(inner);
+                items.push(inner);
+            }
+            Token::OpenCurly => {
+                reader.next();
+                let inner = read_list_like(reader, Token::CloseCurly)?;
+                items.push(inner);
             }
             t if t == closing_token => {
                 // Consume closing token
                 reader.next();
-                let mal_type = match closing_token {
-                    Token::CloseParen => MalType::List,
-                    Token::CloseBracket => MalType::Vector,
+
+                let form = match closing_token {
+                    Token::CloseParen => MalType::List(items),
+                    Token::CloseBracket => MalType::Vector(items),
+                    Token::CloseCurly => {
+                        let map = MalMap::try_from(items)?;
+                        MalType::Map(map)
+                    }
                     _ => unreachable!(),
                 };
-                return Ok(mal_type(list));
+                return Ok(form);
             }
             _ => {
                 let atom = read_atom(reader)?;
-                list.push(atom);
+                items.push(atom);
             }
         }
     }
@@ -241,6 +257,10 @@ fn read_form(reader: &mut Reader) -> anyhow::Result<MalType> {
         Token::OpenBracket => {
             reader.next();
             read_list_like(reader, Token::CloseBracket)?
+        }
+        Token::OpenCurly => {
+            reader.next();
+            read_list_like(reader, Token::CloseCurly)?
         }
         // The read_list should consume all *balanced* close
         // parens, which means we have some extra if we find this

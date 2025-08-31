@@ -1,4 +1,4 @@
-use std::{borrow::Cow, process::exit};
+use std::{borrow::Cow, collections::HashMap, process::exit};
 
 use itertools::Itertools;
 use rustyline::{error::ReadlineError, DefaultEditor};
@@ -6,7 +6,7 @@ use rustyline::{error::ReadlineError, DefaultEditor};
 use marl::env::Env;
 use marl::printer;
 use marl::reader;
-use marl::types::MalType;
+use marl::types::{MalHashKey, MalMap, MalType};
 
 fn main() -> anyhow::Result<()> {
     let mut line_editor = DefaultEditor::new()?;
@@ -140,6 +140,22 @@ where
 
             let res = MalType::Vector(evaluated);
             Ok(Cow::Owned(res))
+        }
+        MalType::Map(MalMap::Unevaluated(forms)) => {
+            let forms = forms
+                .iter()
+                .map(|form| mal_eval(form, env).map(Cow::into_owned))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+
+            let mut map = HashMap::with_capacity(forms.len() / 2);
+
+            for (k, v) in forms.into_iter().tuples() {
+                let key = MalHashKey::try_from(k)?;
+                map.insert(key, v);
+            }
+
+            let mal_map = MalMap::new_evaluated(map);
+            Ok(Cow::Owned(MalType::Map(mal_map)))
         }
         _ => Ok(Cow::Borrowed(ast)),
     }

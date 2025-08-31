@@ -1,12 +1,81 @@
-use std::{borrow::Cow, fmt::Display};
+use std::{borrow::Cow, collections::HashMap, fmt::Display, hash::Hash};
+
+use itertools::Itertools;
 
 pub type MalFunction = fn(&[Cow<'_, MalType>]) -> anyhow::Result<MalType>;
+
+/// Only Strings (and in the future Keywords) can be hashmap keys.
+/// This struct ensures that we will never have another key type and
+/// implements Hash and Eq with this in mind.
+#[derive(Clone, Debug)]
+pub struct MalHashKey(MalType);
+
+impl Display for MalHashKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl Hash for MalHashKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match &self.0 {
+            MalType::String(_) => std::mem::discriminant(&self.0).hash(state),
+            _ => unreachable!(),
+        }
+    }
+}
+impl Eq for MalHashKey {}
+impl PartialEq for MalHashKey {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
+            (MalType::String(sl), MalType::String(sr)) => sl == sr,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl TryFrom<MalType> for MalHashKey {
+    type Error = anyhow::Error;
+
+    fn try_from(value: MalType) -> Result<Self, Self::Error> {
+        if let MalType::String(_) = value {
+            Ok(Self(value))
+        } else {
+            Err(anyhow::anyhow!("Invalid map key: {value}"))
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum MalMap {
+    Unevaluated(Vec<MalType>),
+    Evaluated(HashMap<MalHashKey, MalType>),
+}
+
+impl TryFrom<Vec<MalType>> for MalMap {
+    type Error = anyhow::Error;
+
+    fn try_from(values: Vec<MalType>) -> Result<Self, Self::Error> {
+        if values.len() % 2 != 0 {
+            anyhow::bail!("Odd count in map");
+        }
+
+        Ok(Self::Unevaluated(values))
+    }
+}
+
+impl MalMap {
+    pub fn new_evaluated(map: HashMap<MalHashKey, MalType>) -> Self {
+        Self::Evaluated(map)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum MalType {
     String(String),
     List(Vec<MalType>),
     Vector(Vec<MalType>),
+    Map(MalMap),
     Number(f64),
     Symbol(String),
     Bool(bool),
@@ -41,6 +110,33 @@ impl Display for MalType {
                 }
 
                 f.write_str(close)
+            }
+            MalType::Map(MalMap::Evaluated(map)) => {
+                write!(f, "{{")?;
+
+                for (key, val) in map.iter().take(map.len() - 1) {
+                    write!(f, "{key} {val}, ")?;
+                }
+
+                if let Some((key, val)) = map.iter().last() {
+                    write!(f, "{key} {val}")?;
+                }
+
+                write!(f, "}}")
+            }
+            MalType::Map(MalMap::Unevaluated(forms)) => {
+                write!(f, "{{")?;
+
+                // TODO: We should probably write directly instead of
+                // allocating all these strings in the middle.
+                let res = forms
+                    .iter()
+                    .tuples()
+                    .map(|(k, v)| format!("{k} {v}"))
+                    .join(", ");
+                write!(f, "{res}")?;
+
+                write!(f, "}}")
             }
             MalType::String(s) => write!(f, "\"{s}\""),
             MalType::Number(n) => n.fmt(f),
