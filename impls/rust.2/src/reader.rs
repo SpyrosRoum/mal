@@ -10,6 +10,8 @@ const ESCAPE_CHARS: [char; 2] = ['"', '\\'];
 pub enum Token {
     OpenParen,
     CloseParen,
+    OpenBracket,
+    CloseBracket,
     Symbol(String),
     String(String),
     Number(f64),
@@ -26,6 +28,8 @@ fn tokenize(src: &str) -> anyhow::Result<Vec<Token>> {
         match c {
             '(' => tokens.push(Token::OpenParen),
             ')' => tokens.push(Token::CloseParen),
+            '[' => tokens.push(Token::OpenBracket),
+            ']' => tokens.push(Token::CloseBracket),
             '0'..='9' => {
                 let num = tokenize_number(c, &mut chars)?;
                 tokens.push(Token::Number(num))
@@ -172,9 +176,13 @@ fn read_atom(reader: &mut Reader) -> anyhow::Result<MalType> {
         Token::Symbol(s) => MalType::Symbol(s),
         Token::Number(n) => MalType::Number(n),
         Token::Bool(b) => MalType::Bool(b),
-        Token::OpenParen | Token::CloseParen | Token::EOF => bail!("Expected atom, got {token:?}"),
         Token::String(s) => MalType::String(s),
         Token::Nil => MalType::Nil,
+        Token::OpenParen
+        | Token::CloseParen
+        | Token::EOF
+        | Token::OpenBracket
+        | Token::CloseBracket => bail!("Expected atom, got {token:?}"),
     };
 
     // We didn't error so we can consume the token
@@ -182,7 +190,7 @@ fn read_atom(reader: &mut Reader) -> anyhow::Result<MalType> {
     Ok(atom)
 }
 
-fn read_list(reader: &mut Reader) -> anyhow::Result<MalType> {
+fn read_list_like(reader: &mut Reader, closing_token: Token) -> anyhow::Result<MalType> {
     let mut list = vec![];
 
     loop {
@@ -191,13 +199,24 @@ fn read_list(reader: &mut Reader) -> anyhow::Result<MalType> {
             Token::OpenParen => {
                 // Consume open paren
                 reader.next();
-                let inner = read_list(reader)?;
+                let inner = read_list_like(reader, Token::CloseParen)?;
                 list.push(inner);
             }
-            Token::CloseParen => {
-                // Consume close paren
+            Token::OpenBracket => {
+                // Consume open bracket
                 reader.next();
-                return Ok(MalType::List(list));
+                let inner = read_list_like(reader, Token::CloseBracket)?;
+                list.push(inner);
+            }
+            t if t == closing_token => {
+                // Consume closing token
+                reader.next();
+                let mal_type = match closing_token {
+                    Token::CloseParen => MalType::List,
+                    Token::CloseBracket => MalType::Vector,
+                    _ => unreachable!(),
+                };
+                return Ok(mal_type(list));
             }
             _ => {
                 let atom = read_atom(reader)?;
@@ -217,11 +236,16 @@ fn read_form(reader: &mut Reader) -> anyhow::Result<MalType> {
         Token::EOF => MalType::Nil,
         Token::OpenParen => {
             reader.next();
-            read_list(reader)?
+            read_list_like(reader, Token::CloseParen)?
+        }
+        Token::OpenBracket => {
+            reader.next();
+            read_list_like(reader, Token::CloseBracket)?
         }
         // The read_list should consume all *balanced* close
         // parens, which means we have some extra if we find this
-        Token::CloseParen => bail!("Unbalanced close paren"),
+        Token::CloseParen => bail!("Unbalanced closing parenthesis"),
+        Token::CloseBracket => bail!("Unbalanced closing bracket"),
         _ => read_atom(reader)?,
     };
 

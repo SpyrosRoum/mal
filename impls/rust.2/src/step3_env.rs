@@ -95,9 +95,9 @@ where
                         anyhow::bail!("Expected two arguments for `let*`");
                     }
 
-                    let MalType::List(bindings) = mal_types.get(1).expect("We checked length")
-                    else {
-                        anyhow::bail!("Expected list for bindings");
+                    let bindings = match mal_types.get(1).expect("We checked length") {
+                        MalType::List(forms) | MalType::Vector(forms) => forms,
+                        _ => anyhow::bail!("Expected list or vector for bindings"),
                     };
 
                     if bindings.len() % 2 != 0 {
@@ -131,6 +131,15 @@ where
                 }
                 _ => anyhow::bail!("Cannot apply `{first}`"),
             }
+        }
+        MalType::Vector(forms) => {
+            let evaluated = forms
+                .iter()
+                .map(|form| mal_eval(form, env).map(Cow::into_owned))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+
+            let res = MalType::Vector(evaluated);
+            Ok(Cow::Owned(res))
         }
         _ => Ok(Cow::Borrowed(ast)),
     }

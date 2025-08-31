@@ -6,6 +6,7 @@ pub type MalFunction = fn(&[Cow<'_, MalType>]) -> anyhow::Result<MalType>;
 pub enum MalType {
     String(String),
     List(Vec<MalType>),
+    Vector(Vec<MalType>),
     Number(f64),
     Symbol(String),
     Bool(bool),
@@ -22,8 +23,14 @@ impl MalType {
 impl Display for MalType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MalType::List(mal_types) => {
-                f.write_str("(")?;
+            MalType::List(mal_types) | MalType::Vector(mal_types) => {
+                let (open, close) = if matches!(self, MalType::List(_)) {
+                    ("(", ")")
+                } else {
+                    ("[", "]")
+                };
+
+                f.write_str(open)?;
                 for form in mal_types.iter().take(mal_types.len() - 1) {
                     write!(f, "{form} ")?;
                 }
@@ -33,7 +40,7 @@ impl Display for MalType {
                     write!(f, "{form}")?;
                 }
 
-                f.write_str(")")
+                f.write_str(close)
             }
             MalType::String(s) => write!(f, "\"{s}\""),
             MalType::Number(n) => n.fmt(f),

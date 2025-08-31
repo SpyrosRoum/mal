@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::HashMap, ops::Deref, process::exit};
 
-use rustyline::{DefaultEditor, error::ReadlineError};
+use rustyline::{error::ReadlineError, DefaultEditor};
 
 use marl::printer;
 use marl::reader;
@@ -66,6 +66,16 @@ where
             } else {
                 anyhow::bail!("Expected function")
             }
+        }
+        MalType::Vector(forms) => {
+            let evaluated = forms
+                .iter()
+                .map(|form| mal_eval(form, env))
+                .map(|form| form.map(Cow::into_owned))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+
+            let res = MalType::Vector(evaluated);
+            Ok(Cow::Owned(res))
         }
         _ => Ok(Cow::Borrowed(ast)),
     }
