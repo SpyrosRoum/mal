@@ -135,7 +135,7 @@ fn tokenize_symbol(first: char, chars: &mut Peekable<impl Iterator<Item = char>>
     let mut sym = String::from(first);
 
     while let Some(c) = chars.next_if(|c| {
-        c.is_alphanumeric() || ['*', '+', '!', '-', '_', '\'', '?', '<', '>', '='].contains(c)
+        c.is_alphanumeric() || ['*', '+', '!', '-', '_', '\'', '?', '<', '>', '=', ':'].contains(c)
     }) {
         sym.push(c);
     }
