@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 pub type MalFunction = fn(&[Cow<'_, MalType>]) -> anyhow::Result<MalType>;
 
-/// Only Strings (and in the future Keywords) can be hashmap keys.
+/// Only Strings and Keywords can be hashmap keys.
 /// This struct ensures that we will never have another key type and
 /// implements Hash and Eq with this in mind.
 #[derive(Clone, Debug)]
@@ -20,6 +20,7 @@ impl Hash for MalHashKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match &self.0 {
             MalType::String(_) => std::mem::discriminant(&self.0).hash(state),
+            MalType::Keyword(_) => std::mem::discriminant(&self.0).hash(state),
             _ => unreachable!(),
         }
     }
@@ -29,6 +30,7 @@ impl PartialEq for MalHashKey {
     fn eq(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
             (MalType::String(sl), MalType::String(sr)) => sl == sr,
+            (MalType::Keyword(sl), MalType::Keyword(sr)) => sl == sr,
             _ => unreachable!(),
         }
     }
@@ -38,10 +40,10 @@ impl TryFrom<MalType> for MalHashKey {
     type Error = anyhow::Error;
 
     fn try_from(value: MalType) -> Result<Self, Self::Error> {
-        if let MalType::String(_) = value {
-            Ok(Self(value))
-        } else {
-            Err(anyhow::anyhow!("Invalid map key: {value}"))
+        match value {
+            MalType::String(_) => Ok(Self(value)),
+            MalType::Keyword(_) => Ok(Self(value)),
+            _ => Err(anyhow::anyhow!("Invalid map key: {value}")),
         }
     }
 }
@@ -78,6 +80,7 @@ pub enum MalType {
     Map(MalMap),
     Number(f64),
     Symbol(String),
+    Keyword(String),
     Bool(bool),
     Function(MalFunction),
     Nil,
@@ -141,6 +144,7 @@ impl Display for MalType {
             MalType::String(s) => write!(f, "\"{s}\""),
             MalType::Number(n) => n.fmt(f),
             MalType::Symbol(s) => s.fmt(f),
+            MalType::Keyword(s) => s.fmt(f),
             MalType::Bool(b) => b.fmt(f),
             MalType::Function(_) => write!(f, "Function"),
             MalType::Nil => write!(f, "nil"),

@@ -14,6 +14,7 @@ pub enum Token {
     CloseBracket,
     OpenCurly,
     CloseCurly,
+    Keyword(String),
     Symbol(String),
     String(String),
     Number(f64),
@@ -60,10 +61,11 @@ fn tokenize(src: &str) -> anyhow::Result<Vec<Token>> {
             _ => {
                 let sym = tokenize_symbol(c, &mut chars);
 
-                match sym.as_str() {
-                    "true" => tokens.push(Token::Bool(true)),
-                    "false" => tokens.push(Token::Bool(false)),
-                    "nil" => tokens.push(Token::Nil),
+                match (c, sym.as_str()) {
+                    (':', _) => tokens.push(Token::Keyword(sym)),
+                    (_, "true") => tokens.push(Token::Bool(true)),
+                    (_, "false") => tokens.push(Token::Bool(false)),
+                    (_, "nil") => tokens.push(Token::Nil),
                     _ => tokens.push(Token::Symbol(sym)),
                 }
             }
@@ -178,6 +180,7 @@ fn read_atom(reader: &mut Reader) -> anyhow::Result<MalType> {
     let token = reader.peek();
     let atom = match token {
         Token::Symbol(s) => MalType::Symbol(s),
+        Token::Keyword(s) => MalType::Keyword(s),
         Token::Number(n) => MalType::Number(n),
         Token::Bool(b) => MalType::Bool(b),
         Token::String(s) => MalType::String(s),
