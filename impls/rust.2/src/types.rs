@@ -115,7 +115,7 @@ impl Display for MalType {
                 write!(f, "{{")?;
 
                 for (key, val) in map.iter().take(map.len() - 1) {
-                    write!(f, "{key} {val}, ")?;
+                    write!(f, "{key} {val} ")?;
                 }
 
                 if let Some((key, val)) = map.iter().last() {
@@ -133,7 +133,7 @@ impl Display for MalType {
                     .iter()
                     .tuples()
                     .map(|(k, v)| format!("{k} {v}"))
-                    .join(", ");
+                    .join(" ");
                 write!(f, "{res}")?;
 
                 write!(f, "}}")
