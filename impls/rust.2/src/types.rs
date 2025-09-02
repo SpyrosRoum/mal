@@ -146,7 +146,7 @@ impl Display for MalType {
             MalType::Symbol(s) => s.fmt(f),
             MalType::Keyword(s) => s.fmt(f),
             MalType::Bool(b) => b.fmt(f),
-            MalType::Function(_) => write!(f, "Function"),
+            MalType::Function(_) => write!(f, "#<function>"),
             MalType::Nil => write!(f, "nil"),
         }
     }

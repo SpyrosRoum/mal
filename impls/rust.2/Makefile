@@ -22,7 +22,7 @@ $(STEPS): $(EXEC_DIR)/%: src/%.rs
 # $(STEPS): readline.rs
 $(STEP1-2) $(STEP3) $(UPPER_STEPS): src/types.rs src/reader.rs src/printer.rs
 $(STEP3) $(UPPER_STEPS): src/env.rs
-$(UPPER_STEPS): core.rs
+$(UPPER_STEPS): src/core.rs
 
 lint:
 	rustfmt *.rs
