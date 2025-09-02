@@ -1,7 +1,7 @@
 use std::{borrow::Cow, collections::HashMap, process::exit};
 
 use itertools::Itertools;
-use rustyline::{error::ReadlineError, DefaultEditor};
+use rustyline::{DefaultEditor, error::ReadlineError};
 
 use marl::env::Env;
 use marl::printer;
@@ -87,6 +87,22 @@ where
                     } else {
                         Ok(Cow::Owned(MalType::Nil))
                     }
+                }
+                MalType::Symbol(s) if s == "if" => {
+                    if mal_types.len() != 4 {
+                        anyhow::bail!("Bad argument count for `if`");
+                    }
+
+                    let test = mal_types.get(1).unwrap();
+                    let evaluated_test = mal_eval(test, env)?;
+
+                    let expr = if evaluated_test.is_true() {
+                        mal_types.get(2).unwrap()
+                    } else {
+                        mal_types.get(3).unwrap()
+                    };
+
+                    mal_eval(expr, env)
                 }
                 MalType::Symbol(s) if s == "def!" => {
                     if mal_types.len() != 3 {

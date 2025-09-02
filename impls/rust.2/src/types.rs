@@ -90,6 +90,10 @@ impl MalType {
     pub fn is_num(&self) -> bool {
         matches!(self, MalType::Number(_))
     }
+
+    pub fn is_true(&self) -> bool {
+        !matches!(self, MalType::Nil | MalType::Bool(false))
+    }
 }
 
 impl Display for MalType {
