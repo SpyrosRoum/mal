@@ -1,7 +1,9 @@
 use std::{borrow::Cow, collections::HashMap, process::exit};
 
 use itertools::Itertools;
-use rustyline::{DefaultEditor, error::ReadlineError};
+use marl::types::MalFunction;
+use marl::types::MalSFunction;
+use rustyline::{error::ReadlineError, DefaultEditor};
 
 use marl::env::Env;
 use marl::printer;
@@ -104,6 +106,22 @@ where
 
                     mal_eval(expr, env)
                 }
+                MalType::Symbol(s) if s == "fn*" => {
+                    if mal_types.len() != 3 {
+                        anyhow::bail!("Bad argument count for `fn*`");
+                    }
+
+                    let MalType::List(bindings) = mal_types.get(1).expect("We checked length")
+                    else {
+                        anyhow::bail!("Expected list for fn arguments");
+                    };
+
+                    let func_body = mal_types.get(2).expect("We checked length");
+
+                    let func = MalSFunction::new(env.clone(), bindings.to_vec(), func_body.clone());
+
+                    Ok(Cow::Owned(MalType::Function(func as MalFunction)))
+                }
                 MalType::Symbol(s) if s == "def!" => {
                     if mal_types.len() != 3 {
                         anyhow::bail!("Expected two arguments for `def!`");
@@ -120,7 +138,7 @@ where
                     Ok(Cow::Borrowed(val))
                 }
                 MalType::Symbol(s) if s == "let*" => {
-                    let mut new_env = Env::with_outer(env);
+                    let mut new_env = Env::with_outer(env, &[], &[])?;
 
                     if mal_types.len() != 3 {
                         anyhow::bail!("Expected two arguments for `let*`");

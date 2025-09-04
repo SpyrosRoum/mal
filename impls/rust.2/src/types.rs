@@ -2,7 +2,24 @@ use std::{borrow::Cow, collections::HashMap, fmt::Display, hash::Hash};
 
 use itertools::Itertools;
 
+use crate::env::Env;
+
 pub type MalFunction = fn(&[Cow<'_, MalType>]) -> anyhow::Result<MalType>;
+
+pub struct MalSFunction<'a> {
+    outer_env: Env<'a>,
+    bindings: Vec<MalType>,
+    body: MalType,
+}
+impl<'a> MalSFunction<'a> {
+    pub fn new(outer_env: Env<'a>, bindings: Vec<MalType>, body: MalType) -> Self {
+        Self {
+            outer_env,
+            bindings,
+            body,
+        }
+    }
+}
 
 /// Only Strings and Keywords can be hashmap keys.
 /// This struct ensures that we will never have another key type and

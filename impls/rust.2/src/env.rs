@@ -2,7 +2,7 @@ use std::{borrow::Cow, collections::HashMap, ops::Deref};
 
 use crate::types::{MalFunction, MalType};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Env<'a> {
     data: HashMap<String, MalType>,
     outer: Option<&'a Self>,
@@ -22,11 +22,29 @@ impl<'a> Default for Env<'a> {
 }
 
 impl<'a> Env<'a> {
-    pub fn with_outer(outer: &'a Self) -> Self {
-        Self {
+    pub fn with_outer(
+        outer: &'a Self,
+        bindings: &[MalType],
+        exprs: &[Cow<'_, MalType>],
+    ) -> anyhow::Result<Self> {
+        if bindings.len() != exprs.len() {
+            anyhow::bail!("Wrong count of expresions for new env");
+        }
+
+        let mut env = Self {
             data: HashMap::new(),
             outer: Some(outer),
+        };
+
+        for (key_expr, val) in bindings.iter().zip(exprs.into_iter()) {
+            let MalType::Symbol(key) = key_expr else {
+                anyhow::bail!("Non-symbol key for new env")
+            };
+
+            env.set(key.clone(), val.clone().into_owned())
         }
+
+        Ok(env)
     }
 
     pub fn set(&mut self, key: String, val: MalType) {

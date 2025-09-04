@@ -89,7 +89,7 @@ where
                     Ok(Cow::Borrowed(val))
                 }
                 MalType::Symbol(s) if s == "let*" => {
-                    let mut new_env = Env::with_outer(env);
+                    let mut new_env = Env::with_outer(env, &[], &[])?;
 
                     if mal_types.len() != 3 {
                         anyhow::bail!("Expected two arguments for `let*`");
