@@ -1,14 +1,14 @@
-use std::{borrow::Cow, collections::HashMap, ops::Deref};
+use std::{borrow::Cow, cell::RefCell, collections::HashMap, ops::Deref, rc::Rc};
 
 use crate::types::{MalFunction, MalType};
 
 #[derive(Debug)]
-pub struct Env<'a> {
-    data: HashMap<String, MalType>,
-    outer: Option<&'a Self>,
+pub struct Env {
+    data: RefCell<HashMap<String, MalType>>,
+    outer: Option<Rc<Self>>,
 }
 
-impl<'a> Default for Env<'a> {
+impl Default for Env {
     fn default() -> Self {
         let mut data = HashMap::new();
 
@@ -17,26 +17,29 @@ impl<'a> Default for Env<'a> {
         data.insert("-".to_string(), MalType::Function(mal_sub as MalFunction));
         data.insert("/".to_string(), MalType::Function(mal_div as MalFunction));
 
+        let data = RefCell::new(data);
         Self { data, outer: None }
     }
 }
 
-impl<'a> Env<'a> {
-    pub fn with_outer(outer: &'a Self) -> Self {
+impl Env {
+    pub fn with_outer(outer: Rc<Self>) -> Self {
         Self {
-            data: HashMap::new(),
+            data: RefCell::new(HashMap::new()),
             outer: Some(outer),
         }
     }
 
-    pub fn set(&mut self, key: String, val: MalType) {
-        self.data.insert(key, val);
+    pub fn set(&self, key: String, val: MalType) {
+        self.data.borrow_mut().insert(key, val);
     }
 
-    pub fn get(&self, key: &str) -> Option<&MalType> {
+    pub fn get(&self, key: &str) -> Option<MalType> {
         self.data
+            .borrow()
             .get(key)
-            .or_else(|| self.outer.and_then(|env| env.get(key)))
+            .cloned()
+            .or_else(|| self.outer.as_deref().and_then(|env| env.get(key)))
     }
 }
 

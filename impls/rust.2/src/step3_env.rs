@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, process::exit};
+use std::{borrow::Cow, collections::HashMap, process::exit, rc::Rc};
 
 use itertools::Itertools;
 use rustyline::{error::ReadlineError, DefaultEditor};
@@ -11,14 +11,14 @@ use marl::types::{MalHashKey, MalMap, MalType};
 fn main() -> anyhow::Result<()> {
     let mut line_editor = DefaultEditor::new()?;
 
-    let mut env = Env::default();
+    let env = Rc::new(Env::default());
 
     let code = loop {
         let sig = line_editor.readline("user> ");
 
         match sig {
             Ok(buffer) => {
-                let res = mal_rep(&buffer, &mut env);
+                let res = mal_rep(&buffer, &env);
                 match res {
                     Ok(r) => println!("{r}"),
                     Err(err) => println!("{err}"),
@@ -45,7 +45,7 @@ fn mal_read(input: &str) -> anyhow::Result<MalType> {
 /// Assert that the key is a symbol, evaluate the form, and return the
 /// key identifier after setting the key, val in the env.
 fn set_in_env<'a>(
-    env: &mut Env,
+    env: &Rc<Env>,
     key: &'a MalType,
     form_to_be_evaled: &MalType,
 ) -> anyhow::Result<&'a str> {
@@ -59,14 +59,11 @@ fn set_in_env<'a>(
     Ok(ident)
 }
 
-fn mal_eval<'a, 'e>(ast: &'a MalType, env: &'e mut Env) -> anyhow::Result<Cow<'a, MalType>>
-where
-    'e: 'a,
-{
+fn mal_eval<'a>(ast: &'a MalType, env: &Rc<Env>) -> anyhow::Result<Cow<'a, MalType>> {
     match ast {
         MalType::Symbol(s) => env
             .get(s)
-            .map(Cow::Borrowed)
+            .map(Cow::Owned)
             .ok_or_else(|| anyhow::anyhow!("Symbol {s} not found")),
         MalType::List(types) if types.is_empty() => Ok(Cow::Borrowed(ast)),
         MalType::List(mal_types) => {
@@ -86,10 +83,10 @@ where
                     // Cow::Borrowed but this acts as an assert that
                     // we did actually set it without issues.
                     let val = env.get(ident).expect("We just set it in the env");
-                    Ok(Cow::Borrowed(val))
+                    Ok(Cow::Owned(val))
                 }
                 MalType::Symbol(s) if s == "let*" => {
-                    let mut new_env = Env::with_outer(env);
+                    let new_env = Rc::new(Env::with_outer(Rc::clone(env)));
 
                     if mal_types.len() != 3 {
                         anyhow::bail!("Expected two arguments for `let*`");
@@ -105,11 +102,11 @@ where
                     }
 
                     for (key, val) in bindings.iter().tuples() {
-                        set_in_env(&mut new_env, key, val)?;
+                        set_in_env(&new_env, key, val)?;
                     }
 
                     let form = mal_types.last().expect("We checked length");
-                    let res = mal_eval(form, &mut new_env)?;
+                    let res = mal_eval(form, &new_env)?;
                     Ok(Cow::Owned(res.into_owned()))
                 }
                 MalType::Symbol(_) => {
@@ -165,7 +162,7 @@ fn mal_print(input: &MalType) -> String {
     printer::pr_str(input)
 }
 
-fn mal_rep(input: &str, env: &mut Env) -> anyhow::Result<String> {
+fn mal_rep(input: &str, env: &Rc<Env>) -> anyhow::Result<String> {
     let form = mal_read(input)?;
     let res = mal_eval(&form, env)?;
     Ok(mal_print(&res))
