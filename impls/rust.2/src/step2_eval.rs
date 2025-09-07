@@ -6,7 +6,7 @@ use rustyline::{error::ReadlineError, DefaultEditor};
 
 use marl::printer;
 use marl::reader;
-use marl::types::{MalFunction, MalMap, MalType};
+use marl::types::{MalFunction, MalMap, MalNativeFunction, MalType};
 
 fn main() -> anyhow::Result<()> {
     let mut line_editor = DefaultEditor::new()?;
@@ -63,10 +63,12 @@ where
 
             let form = evaluated.first().expect("We matched non-empty list");
 
-            if let MalType::Function(func) = &**form {
-                Ok(Cow::Owned(func(&evaluated[1..])?))
-            } else {
-                anyhow::bail!("Expected function")
+            match form.deref() {
+                MalType::Function(MalFunction::Native(func)) => {
+                    Ok(Cow::Owned(func(&evaluated[1..])?))
+                }
+                MalType::Function(MalFunction::Lambda(_)) => unreachable!(),
+                _ => anyhow::bail!("Expected function"),
             }
         }
         MalType::Vector(forms) => {
@@ -198,10 +200,22 @@ impl Default for Env {
     fn default() -> Self {
         let mut data = HashMap::new();
 
-        data.insert("+".to_string(), MalType::Function(mal_add as MalFunction));
-        data.insert("*".to_string(), MalType::Function(mal_mul as MalFunction));
-        data.insert("-".to_string(), MalType::Function(mal_sub as MalFunction));
-        data.insert("/".to_string(), MalType::Function(mal_div as MalFunction));
+        data.insert(
+            "+".to_string(),
+            MalType::Function(MalFunction::Native(mal_add as MalNativeFunction)),
+        );
+        data.insert(
+            "*".to_string(),
+            MalType::Function(MalFunction::Native(mal_mul as MalNativeFunction)),
+        );
+        data.insert(
+            "-".to_string(),
+            MalType::Function(MalFunction::Native(mal_sub as MalNativeFunction)),
+        );
+        data.insert(
+            "/".to_string(),
+            MalType::Function(MalFunction::Native(mal_div as MalNativeFunction)),
+        );
 
         Self { data }
     }

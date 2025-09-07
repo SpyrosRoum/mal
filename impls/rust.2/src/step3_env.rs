@@ -1,6 +1,7 @@
 use std::{borrow::Cow, collections::HashMap, process::exit, rc::Rc};
 
 use itertools::Itertools;
+use marl::types::MalFunction;
 use rustyline::{error::ReadlineError, DefaultEditor};
 
 use marl::env::Env;
@@ -112,18 +113,22 @@ fn mal_eval<'a>(ast: &'a MalType, env: &Rc<Env>) -> anyhow::Result<Cow<'a, MalTy
                 MalType::Symbol(_) => {
                     let evaluated_first = mal_eval(first, env)?;
 
-                    if let MalType::Function(func) = *evaluated_first {
-                        // TODO: Surely this can be done better
-                        let evaluated_args = mal_types
-                            .iter()
-                            .skip(1)
-                            .map(|form| mal_eval(form, env).map(|v| v.into_owned()).map(Cow::Owned))
-                            .collect::<anyhow::Result<Vec<_>>>()?;
+                    match &*evaluated_first {
+                        MalType::Function(MalFunction::Native(func)) => {
+                            // TODO: Surely this can be done better
+                            let evaluated_args = mal_types
+                                .iter()
+                                .skip(1)
+                                .map(|form| {
+                                    mal_eval(form, env).map(|v| v.into_owned()).map(Cow::Owned)
+                                })
+                                .collect::<anyhow::Result<Vec<_>>>()?;
 
-                        let res = func(&evaluated_args)?;
-                        Ok(Cow::Owned(res))
-                    } else {
-                        anyhow::bail!("Cannot apply `{evaluated_first}`");
+                            let res = func(&evaluated_args)?;
+                            Ok(Cow::Owned(res))
+                        }
+                        MalType::Function(MalFunction::Lambda(_)) => unreachable!(),
+                        _ => anyhow::bail!("Cannot apply `{evaluated_first}`"),
                     }
                 }
                 _ => anyhow::bail!("Cannot apply `{first}`"),

@@ -1,6 +1,6 @@
 use std::{borrow::Cow, cell::RefCell, collections::HashMap, ops::Deref, rc::Rc};
 
-use crate::types::{MalFunction, MalType};
+use crate::types::{MalFunction, MalNativeFunction, MalType};
 
 #[derive(Debug)]
 pub struct Env {
@@ -12,10 +12,22 @@ impl Default for Env {
     fn default() -> Self {
         let mut data = HashMap::new();
 
-        data.insert("+".to_string(), MalType::Function(mal_add as MalFunction));
-        data.insert("*".to_string(), MalType::Function(mal_mul as MalFunction));
-        data.insert("-".to_string(), MalType::Function(mal_sub as MalFunction));
-        data.insert("/".to_string(), MalType::Function(mal_div as MalFunction));
+        data.insert(
+            "+".to_string(),
+            MalType::Function(MalFunction::Native(mal_add as MalNativeFunction)),
+        );
+        data.insert(
+            "*".to_string(),
+            MalType::Function(MalFunction::Native(mal_mul as MalNativeFunction)),
+        );
+        data.insert(
+            "-".to_string(),
+            MalType::Function(MalFunction::Native(mal_sub as MalNativeFunction)),
+        );
+        data.insert(
+            "/".to_string(),
+            MalType::Function(MalFunction::Native(mal_div as MalNativeFunction)),
+        );
 
         let data = RefCell::new(data);
         Self { data, outer: None }

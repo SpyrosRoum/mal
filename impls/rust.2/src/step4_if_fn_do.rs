@@ -1,12 +1,13 @@
 use std::{borrow::Cow, collections::HashMap, process::exit, rc::Rc};
 
 use itertools::Itertools;
+use marl::types::MalLambda;
 use rustyline::{error::ReadlineError, DefaultEditor};
 
 use marl::env::Env;
 use marl::printer;
 use marl::reader;
-use marl::types::{MalHashKey, MalMap, MalType};
+use marl::types::{MalFunction, MalHashKey, MalMap, MalType};
 
 fn main() -> anyhow::Result<()> {
     let mut line_editor = DefaultEditor::new()?;
@@ -85,6 +86,24 @@ fn mal_eval<'a>(ast: &'a MalType, env: &Rc<Env>) -> anyhow::Result<Cow<'a, MalTy
                         Ok(Cow::Owned(MalType::Nil))
                     }
                 }
+                MalType::Symbol(s) if s == "fn*" => {
+                    if mal_types.len() != 3 {
+                        anyhow::bail!("Bad argument count for `fn*`");
+                    }
+
+                    let MalType::List(bindings) = mal_types.get(1).expect("We checked length")
+                    else {
+                        anyhow::bail!("Bad type for fn* arguments");
+                    };
+
+                    let body = mal_types.get(2).expect("We checked length");
+
+                    let func = MalLambda::new(Rc::clone(env), bindings.clone(), body.clone())?;
+
+                    Ok(Cow::Owned(MalType::Function(MalFunction::Lambda(
+                        Box::new(func),
+                    ))))
+                }
                 MalType::Symbol(s) if s == "if" => {
                     if mal_types.len() != 4 {
                         anyhow::bail!("Bad argument count for `if`");
@@ -143,19 +162,63 @@ fn mal_eval<'a>(ast: &'a MalType, env: &Rc<Env>) -> anyhow::Result<Cow<'a, MalTy
                 MalType::Symbol(_) => {
                     let evaluated_first = mal_eval(first, env)?;
 
-                    if let MalType::Function(func) = *evaluated_first {
-                        // TODO: Surely this can be done better
-                        let evaluated_args = mal_types
-                            .iter()
-                            .skip(1)
-                            .map(|form| mal_eval(form, env).map(|v| v.into_owned()).map(Cow::Owned))
-                            .collect::<anyhow::Result<Vec<_>>>()?;
+                    match &*evaluated_first {
+                        MalType::Function(MalFunction::Native(func)) => {
+                            let evaluated_args = mal_types
+                                .iter()
+                                .skip(1)
+                                .map(|form| mal_eval(form, env))
+                                .collect::<anyhow::Result<Vec<_>>>()?;
 
-                        let res = func(&evaluated_args)?;
-                        Ok(Cow::Owned(res))
-                    } else {
-                        anyhow::bail!("Cannot apply `{evaluated_first}`");
+                            func(&evaluated_args).map(Cow::Owned)
+                        }
+                        MalType::Function(MalFunction::Lambda(func)) => {
+                            let args = &mal_types[1..];
+
+                            if args.len() != func.bindings.len() {
+                                anyhow::bail!("Bad argument count");
+                            }
+
+                            let func_env = Rc::new(Env::with_outer(Rc::clone(&func.outer_env)));
+
+                            for (key, val) in func.bindings.iter().zip(args) {
+                                set_in_env(&func_env, key, val)?;
+                            }
+
+                            mal_eval(&func.body, &func_env)
+                                .map(Cow::into_owned)
+                                .map(Cow::Owned)
+                        }
+                        _ => anyhow::bail!("Cannot apply `{evaluated_first}`"),
                     }
+                }
+                MalType::List(_) => {
+                    let evaluated_first = mal_eval(first, env)?;
+
+                    let mut new_forms = vec![evaluated_first.into_owned()];
+                    new_forms.extend_from_slice(&mal_types[1..]);
+
+                    let new_list = MalType::List(new_forms);
+                    mal_eval(&new_list, env)
+                        .map(Cow::into_owned)
+                        .map(Cow::Owned)
+                }
+                MalType::Function(MalFunction::Lambda(func)) => {
+                    let args = &mal_types[1..];
+
+                    if args.len() != func.bindings.len() {
+                        anyhow::bail!("Bad argument count");
+                    }
+
+                    let func_env = Rc::new(Env::with_outer(Rc::clone(&func.outer_env)));
+
+                    for (key, val) in func.bindings.iter().zip(args) {
+                        set_in_env(&func_env, key, val)?;
+                    }
+
+                    mal_eval(&func.body, &func_env)
+                        .map(Cow::into_owned)
+                        .map(Cow::Owned)
                 }
                 _ => anyhow::bail!("Cannot apply `{first}`"),
             }

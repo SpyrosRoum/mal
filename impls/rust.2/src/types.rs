@@ -1,8 +1,37 @@
-use std::{borrow::Cow, collections::HashMap, fmt::Display, hash::Hash};
+use std::{borrow::Cow, collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
 
 use itertools::Itertools;
 
-pub type MalFunction = fn(&[Cow<'_, MalType>]) -> anyhow::Result<MalType>;
+use crate::env::Env;
+
+pub type MalNativeFunction = fn(&[Cow<'_, MalType>]) -> anyhow::Result<MalType>;
+
+#[derive(Debug, Clone)]
+pub struct MalLambda {
+    pub outer_env: Rc<Env>,
+    pub bindings: Vec<MalType>,
+    pub body: MalType,
+}
+
+impl MalLambda {
+    pub fn new(outer_env: Rc<Env>, bindings: Vec<MalType>, body: MalType) -> anyhow::Result<Self> {
+        if !bindings.iter().all(MalType::is_symbol) {
+            anyhow::bail!("Expected symbol binding")
+        }
+
+        Ok(Self {
+            outer_env,
+            bindings,
+            body,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum MalFunction {
+    Native(MalNativeFunction),
+    Lambda(Box<MalLambda>),
+}
 
 /// Only Strings and Keywords can be hashmap keys.
 /// This struct ensures that we will never have another key type and
@@ -89,6 +118,10 @@ pub enum MalType {
 impl MalType {
     pub fn is_num(&self) -> bool {
         matches!(self, MalType::Number(_))
+    }
+
+    pub fn is_symbol(&self) -> bool {
+        matches!(self, MalType::Symbol(_))
     }
 
     pub fn is_true(&self) -> bool {
