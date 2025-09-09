@@ -1,5 +1,6 @@
 use std::{borrow::Cow, collections::HashMap, process::exit, rc::Rc};
 
+use anyhow::Context;
 use itertools::Itertools;
 use marl::types::MalLambda;
 use marl::types::NIL;
@@ -67,6 +68,65 @@ fn set_in_env<'a>(
     Ok(ident)
 }
 
+fn eval_lambda<'a, 'b>(
+    env: &'a Rc<Env>,
+    lambda: &'b Box<MalLambda>,
+    args: &'b [MalType],
+) -> anyhow::Result<Cow<'b, MalType>> {
+    if !lambda.is_variadic && args.len() != lambda.bindings.len() {
+        anyhow::bail!("Bad argument count");
+    } else if lambda.is_variadic && args.len() < lambda.bindings.len() - 2 {
+        // bindings.len() - 2 because we have to account for the `&`
+        // and we pass empty list if there are no args
+        anyhow::bail!("Bad argument count");
+    }
+
+    let func_env = Rc::new(Env::with_outer(Rc::clone(&lambda.outer_env)));
+
+    if !lambda.is_variadic {
+        for (key, val) in lambda.bindings.iter().zip(args) {
+            let MalType::Symbol(ident) = key else {
+                anyhow::bail!("Expected identifier");
+            };
+            let val = mal_eval(val, env)?.into_owned();
+            func_env.set(ident.clone(), val);
+        }
+    } else {
+        let mut key_i = 0;
+        let mut val_i = 0;
+        while let Some(key) = lambda.bindings.get(key_i) {
+            let MalType::Symbol(ident) = key else {
+                anyhow::bail!("Expected identifier");
+            };
+
+            if ident == "&" {
+                let key = lambda.bindings.get(key_i + 1).context("Bad arguments")?;
+                let MalType::Symbol(ident) = key else {
+                    anyhow::bail!("Expected identifier");
+                };
+
+                let evaluated_args = args[val_i..]
+                    .iter()
+                    .map(|form| mal_eval(form, env))
+                    .map(|form| form.map(|f| f.into_owned()))
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+
+                func_env.set(ident.clone(), MalType::List(evaluated_args));
+
+                break;
+            } else {
+                let form = args.get(val_i).expect("We checked arg count");
+                let val = mal_eval(form, env)?.into_owned();
+                func_env.set(ident.clone(), val);
+                val_i += 1;
+                key_i += 1;
+            }
+        }
+    }
+
+    mal_eval(&lambda.body, &func_env)
+}
+
 fn mal_eval<'a>(ast: &'a MalType, env: &Rc<Env>) -> anyhow::Result<Cow<'a, MalType>> {
     match ast {
         MalType::Symbol(s) => env
@@ -104,9 +164,18 @@ fn mal_eval<'a>(ast: &'a MalType, env: &Rc<Env>) -> anyhow::Result<Cow<'a, MalTy
                         _ => anyhow::bail!("Bad type for fn* arguments"),
                     };
 
+                    let is_variadic = bindings
+                        .iter()
+                        .any(|i| matches!(i, MalType::Symbol(s) if s == "&"));
+
                     let body = mal_types.get(2).expect("We checked length");
 
-                    let func = MalLambda::new(Rc::clone(env), bindings.clone(), body.clone())?;
+                    let func = MalLambda::new(
+                        Rc::clone(env),
+                        bindings.clone(),
+                        is_variadic,
+                        body.clone(),
+                    )?;
 
                     Ok(Cow::Owned(MalType::Function(MalFunction::Lambda(
                         Box::new(func),
@@ -181,22 +250,11 @@ fn mal_eval<'a>(ast: &'a MalType, env: &Rc<Env>) -> anyhow::Result<Cow<'a, MalTy
                             func(&evaluated_args).map(Cow::Owned)
                         }
                         MalType::Function(MalFunction::Lambda(func)) => {
-                            let args = &mal_types[1..];
-
-                            if args.len() != func.bindings.len() {
-                                anyhow::bail!("Bad argument count");
-                            }
-
-                            let func_env = Rc::new(Env::with_outer(Rc::clone(&func.outer_env)));
-
-                            for (key, val) in func.bindings.iter().zip(args) {
-                                set_in_env(&func_env, key, val)?;
-                            }
-
-                            mal_eval(&func.body, &func_env)
+                            eval_lambda(env, func, &mal_types[1..])
                                 .map(Cow::into_owned)
                                 .map(Cow::Owned)
                         }
+
                         _ => anyhow::bail!("Cannot apply `{evaluated_first}`"),
                     }
                 }
@@ -212,19 +270,7 @@ fn mal_eval<'a>(ast: &'a MalType, env: &Rc<Env>) -> anyhow::Result<Cow<'a, MalTy
                         .map(Cow::Owned)
                 }
                 MalType::Function(MalFunction::Lambda(func)) => {
-                    let args = &mal_types[1..];
-
-                    if args.len() != func.bindings.len() {
-                        anyhow::bail!("Bad argument count");
-                    }
-
-                    let func_env = Rc::new(Env::with_outer(Rc::clone(&func.outer_env)));
-
-                    for (key, val) in func.bindings.iter().zip(args) {
-                        set_in_env(&func_env, key, val)?;
-                    }
-
-                    mal_eval(&func.body, &func_env)
+                    eval_lambda(env, func, &mal_types[1..])
                         .map(Cow::into_owned)
                         .map(Cow::Owned)
                 }

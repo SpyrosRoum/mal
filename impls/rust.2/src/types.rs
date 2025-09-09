@@ -12,11 +12,17 @@ pub type MalNativeFunction = fn(&[Cow<'_, MalType>]) -> anyhow::Result<MalType>;
 pub struct MalLambda {
     pub outer_env: Rc<Env>,
     pub bindings: Vec<MalType>,
+    pub is_variadic: bool,
     pub body: MalType,
 }
 
 impl MalLambda {
-    pub fn new(outer_env: Rc<Env>, bindings: Vec<MalType>, body: MalType) -> anyhow::Result<Self> {
+    pub fn new(
+        outer_env: Rc<Env>,
+        bindings: Vec<MalType>,
+        is_variadic: bool,
+        body: MalType,
+    ) -> anyhow::Result<Self> {
         if !bindings.iter().all(MalType::is_symbol) {
             anyhow::bail!("Expected symbol binding")
         }
@@ -24,6 +30,7 @@ impl MalLambda {
         Ok(Self {
             outer_env,
             bindings,
+            is_variadic,
             body,
         })
     }
