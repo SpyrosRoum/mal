@@ -4,6 +4,8 @@ use itertools::Itertools;
 
 use crate::env::Env;
 
+pub const NIL: MalType = MalType::Nil;
+
 pub type MalNativeFunction = fn(&[Cow<'_, MalType>]) -> anyhow::Result<MalType>;
 
 #[derive(Debug, Clone)]

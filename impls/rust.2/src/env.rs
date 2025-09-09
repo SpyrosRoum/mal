@@ -35,6 +35,13 @@ impl Default for Env {
 }
 
 impl Env {
+    pub fn new() -> Self {
+        Self {
+            data: RefCell::new(HashMap::new()),
+            outer: None,
+        }
+    }
+
     pub fn with_outer(outer: Rc<Self>) -> Self {
         Self {
             data: RefCell::new(HashMap::new()),

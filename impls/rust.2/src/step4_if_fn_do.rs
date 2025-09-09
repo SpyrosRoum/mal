@@ -2,8 +2,10 @@ use std::{borrow::Cow, collections::HashMap, process::exit, rc::Rc};
 
 use itertools::Itertools;
 use marl::types::MalLambda;
+use marl::types::NIL;
 use rustyline::{error::ReadlineError, DefaultEditor};
 
+use marl::core::core_ns;
 use marl::env::Env;
 use marl::printer;
 use marl::reader;
@@ -12,7 +14,12 @@ use marl::types::{MalFunction, MalHashKey, MalMap, MalType};
 fn main() -> anyhow::Result<()> {
     let mut line_editor = DefaultEditor::new()?;
 
-    let env = Rc::new(Env::default());
+    let env = Rc::new(Env::new());
+    for (key, val) in core_ns().iter() {
+        let key = MalType::Symbol(key.to_string());
+        let val = MalType::Function(val.clone());
+        set_in_env(&env, &key, &val)?;
+    }
 
     let code = loop {
         let sig = line_editor.readline("user> ");
@@ -91,9 +98,10 @@ fn mal_eval<'a>(ast: &'a MalType, env: &Rc<Env>) -> anyhow::Result<Cow<'a, MalTy
                         anyhow::bail!("Bad argument count for `fn*`");
                     }
 
-                    let MalType::List(bindings) = mal_types.get(1).expect("We checked length")
-                    else {
-                        anyhow::bail!("Bad type for fn* arguments");
+                    let bindings = match mal_types.get(1).expect("We checked length") {
+                        MalType::List(b) => b,
+                        MalType::Vector(b) => b,
+                        _ => anyhow::bail!("Bad type for fn* arguments"),
                     };
 
                     let body = mal_types.get(2).expect("We checked length");
@@ -105,7 +113,7 @@ fn mal_eval<'a>(ast: &'a MalType, env: &Rc<Env>) -> anyhow::Result<Cow<'a, MalTy
                     ))))
                 }
                 MalType::Symbol(s) if s == "if" => {
-                    if mal_types.len() != 4 {
+                    if mal_types.len() < 3 || mal_types.len() > 4 {
                         anyhow::bail!("Bad argument count for `if`");
                     }
 
@@ -115,7 +123,7 @@ fn mal_eval<'a>(ast: &'a MalType, env: &Rc<Env>) -> anyhow::Result<Cow<'a, MalTy
                     let expr = if evaluated_test.is_true() {
                         mal_types.get(2).unwrap()
                     } else {
-                        mal_types.get(3).unwrap()
+                        mal_types.get(3).unwrap_or(&NIL)
                     };
 
                     mal_eval(expr, env)
