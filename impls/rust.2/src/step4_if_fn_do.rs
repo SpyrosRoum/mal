@@ -22,6 +22,9 @@ fn main() -> anyhow::Result<()> {
         set_in_env(&env, &key, &val)?;
     }
 
+    let not_func = "(def! not (fn* (a) (if a false true)))";
+    mal_rep(&not_func, &env).expect("Is fine");
+
     let code = loop {
         let sig = line_editor.readline("user> ");
 
